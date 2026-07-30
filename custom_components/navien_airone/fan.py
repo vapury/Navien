@@ -145,6 +145,24 @@ class NavienSmartFan(
         else:
             fan_key = "auto"
 
+        device = self.device
+        if device is not None:
+            state = self.coordinator.client._optimistic_state.get(self._device_id, {})
+            current_mode_key = state.get("current_mode_key") or device.current_mode_key
+            mode = next((m for m in device.modes if m.key == current_mode_key), None)
+            if mode:
+                supported_fans = [f.key for f in mode.fan_options]
+                if fan_key not in supported_fans:
+                    # Current mode doesn't support this fan speed. Auto-switch to a mode that does.
+                    for fallback in ("vent", "vent_dry"):
+                        fallback_mode = next((m for m in device.modes if m.key == fallback), None)
+                        if fallback_mode and fan_key in [f.key for f in fallback_mode.fan_options]:
+                            if not self.is_on:
+                                await self.coordinator.client.async_set_power(self._device_id, True)
+                            await self.coordinator.client.async_set_mode(self._device_id, fallback, fan_key=fan_key)
+                            await self.coordinator.async_request_refresh()
+                            return
+
         if not self.is_on:
             await self.coordinator.client.async_set_power(self._device_id, True)
 

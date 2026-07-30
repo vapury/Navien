@@ -428,7 +428,7 @@ class NavienSmartApiClient:
         """Set fan option for the currently selected operation mode."""
         device = self._device_for_control(device_id)
         state = self._optimistic_state.setdefault(device_id, {})
-        mode_key = state.get("current_mode_key") or (device.modes[0].key if device.modes else None)
+        mode_key = state.get("current_mode_key") or device.current_mode_key or (device.modes[0].key if device.modes else None)
         if mode_key is None:
             raise NavienSmartUnsupportedError("This Navien device has no mapped operation modes")
         await self.async_set_mode(
