@@ -336,6 +336,14 @@ class NavienSmartApiClient:
 
     async def async_get_cached_devices(self) -> list[NavienDevice]:
         """Return devices using the latest cached raw devices and MQTT state."""
+        if self._raw_devices and not self._mqtt_connected:
+            try:
+                LOGGER.info("Navien Smart MQTT disconnected, attempting to self-heal (re-login & reconnect)")
+                await self.async_login()
+                await self._async_ensure_mqtt_connected()
+            except Exception as err:
+                LOGGER.warning("Navien Smart MQTT self-healing failed: %s", err)
+
         normalized = [await self._normalize_device(device) for device in self._raw_devices]
         self._devices = {device.id: device for device in normalized}
         return normalized
@@ -1362,19 +1370,6 @@ class NavienSmartApiClient:
             data = json.loads(payload)
         except json.JSONDecodeError:
             return {}
-
-        candidates = [
-            (((data.get("payload") or {}).get("reported") or {}).get("roomController")),
-            (((((data.get("payload") or {}).get("reported") or {}).get("eachRoomSd") or {}).get("roomController"))),
-            (((data.get("state") or {}).get("reported") or {}).get("roomController")),
-            (((((data.get("state") or {}).get("reported") or {}).get("eachRoomSd") or {}).get("roomController"))),
-            ((data.get("reported") or {}).get("roomController")),
-            ((((data.get("reported") or {}).get("eachRoomSd") or {}).get("roomController"))),
-            data.get("roomController"),
-        ]
-        for candidate in candidates:
-            if cls._looks_like_room_controller_status(candidate):
-                return candidate
         return cls._find_room_controller_status(data)
 
     @classmethod

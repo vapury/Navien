@@ -89,12 +89,10 @@ class NavienSmartFan(
     def _valid_fan_options(self) -> list[str]:
         """Return a sorted list of valid fan keys for the current mode."""
         device = self.device
-        if device is None:
+        if device is None or device.current_mode_key is None:
             return []
         
-        state = self.coordinator.client._optimistic_state.get(self._device_id, {})
-        current_mode_key = state.get("current_mode_key") or device.current_mode_key
-        mode = next((m for m in device.modes if m.key == current_mode_key), None)
+        mode = next((m for m in device.modes if m.key == device.current_mode_key), None)
         if not mode:
             return []
             
