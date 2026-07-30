@@ -50,8 +50,7 @@ AIR_SENSOR_DESCRIPTIONS: tuple[NavienSmartSensorDescription, ...] = (
     NavienSmartSensorDescription(key="radon", name="Radon", native_unit="Bq/m3"),
 )
 
-AIR_MONITOR_NAME = "Navien Air Monitor"
-AIR_MONITOR_MODEL = "NAA-21DM"
+
 
 
 async def async_setup_entry(
@@ -150,27 +149,12 @@ class NavienSmartAirSensor(
         if self.device is None:
             return None
         raw = self.device.raw or {}
-        profile = self._sensor_profile
-        source = profile.get("source")
-        sensor_device_id = str(profile.get("deviceId") or raw.get("deviceId") or self.device.id)
-        if source == "external_air_monitor":
-            identifiers = {(DOMAIN, f"{self.device.id}_air_monitor_{sensor_device_id}")}
-            name = AIR_MONITOR_NAME
-            model_code = profile.get("modelCode")
-            if profile.get("modelName"):
-                model = profile["modelName"]
-            elif model_code:
-                model = "Air Monitor"
-            else:
-                model = AIR_MONITOR_MODEL
-            if model_code:
-                model = f"{model} ({profile['modelCode']})"
-            serial_number = sensor_device_id
-        else:
-            identifiers = {(DOMAIN, self.device.id)}
-            name = self.device.name
-            model = raw.get("modelDisplayName") or raw.get("modelCode")
-            serial_number = str(raw.get("deviceId")) if raw.get("deviceId") else None
+        
+        identifiers = {(DOMAIN, self.device.id)}
+        name = self.device.name
+        model = raw.get("modelDisplayName") or raw.get("modelCode")
+        serial_number = str(raw.get("deviceId")) if raw.get("deviceId") else None
+        
         return DeviceInfo(
             identifiers=identifiers,
             manufacturer="KyungDong Navien",
