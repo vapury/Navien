@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "나비엔 에어원",
+        "description": "나비엔 스마트 계정 정보를 입력하세요.",
+        "data": {
+          "username": "아이디",
+          "password": "비밀번호"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "연결에 실패했습니다",
+      "invalid_auth": "인증 정보가 올바르지 않습니다"
+    },
+    "abort": {
+      "already_configured": "이미 설정된 계정입니다"
+    }
+  }
+}

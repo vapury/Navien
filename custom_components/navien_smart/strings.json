@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Navien Airone",
+        "description": "Enter your Navien Smart account credentials.",
+        "data": {
+          "username": "ID",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication"
+    },
+    "abort": {
+      "already_configured": "This account is already configured"
+    }
+  }
+}
