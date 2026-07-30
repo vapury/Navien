@@ -967,7 +967,17 @@ class NavienSmartApiClient:
         options: list[NavienFanOption] = []
         configurable = bool(mode_item.get("configurable"))
         supported = mode_item.get("supportedAirVolumes") or []
-        if configurable and isinstance(supported, list):
+        
+        # NRT-530S 등 일부 기기는 supportedAirVolumes가 없지만 additionalData type 1에 max=4 형태로 풍량을 줌
+        if not supported and configurable:
+            for item in mode_item.get("additionalData") or []:
+                if isinstance(item, dict) and item.get("type") == 1:
+                    max_val = item.get("max")
+                    if max_val in (3, 4, 5):
+                        supported = list(range(1, int(max_val) + 1))
+                        break
+
+        if configurable and isinstance(supported, list) and supported:
             for air_volume in supported:
                 if int(air_volume) in FAN_BY_AIR_VOLUME:
                     key, name = FAN_BY_AIR_VOLUME[int(air_volume)]
