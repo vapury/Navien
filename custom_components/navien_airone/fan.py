@@ -86,6 +86,31 @@ class NavienSmartFan(
         return self.device.power
 
     @property
+    def _valid_fan_options(self) -> list[str]:
+        """Return a sorted list of valid fan keys for the current mode."""
+        device = self.device
+        if device is None:
+            return []
+        
+        state = self.coordinator.client._optimistic_state.get(self._device_id, {})
+        current_mode_key = state.get("current_mode_key") or device.current_mode_key
+        mode = next((m for m in device.modes if m.key == current_mode_key), None)
+        if not mode:
+            return []
+            
+        valid_order = ["gentle", "low", "high", "auto"]
+        supported = [f.key for f in mode.fan_options]
+        return [k for k in valid_order if k in supported]
+
+    @property
+    def percentage_step(self) -> float:
+        """Return the dynamic step size based on valid fan options."""
+        count = len(self._valid_fan_options)
+        if count == 0:
+            return 100.0
+        return 100.0 / count
+
+    @property
     def percentage(self) -> int | None:
         """Return the current speed percentage."""
         if self.device is None:
@@ -94,23 +119,12 @@ class NavienSmartFan(
             return 0
         
         fan_key = self.device.current_fan_key
-        if fan_key == "gentle":
-            return 20
-        elif fan_key == "low":
-            return 40
-        elif fan_key == "high":
-            return 60
-        elif fan_key == "turbo":
-            return 80
-        elif fan_key == "auto":
-            return 100
-        
-        return 0
-
-    @property
-    def percentage_step(self) -> float:
-        """Return the step size for speed percentage."""
-        return 20.0
+        valid_fans = self._valid_fan_options
+        if fan_key not in valid_fans:
+            return 0
+            
+        index = valid_fans.index(fan_key)
+        return int(round((index + 1) * self.percentage_step))
 
     @property
     def preset_modes(self) -> list[str] | None:
@@ -133,35 +147,14 @@ class NavienSmartFan(
             await self.async_turn_off()
             return
 
-        fan_key = "auto"
-        if percentage <= 20:
-            fan_key = "gentle"
-        elif percentage <= 40:
-            fan_key = "low"
-        elif percentage <= 60:
-            fan_key = "high"
-        elif percentage <= 80:
-            fan_key = "turbo"
-        else:
-            fan_key = "auto"
+        valid_fans = self._valid_fan_options
+        if not valid_fans:
+            return
 
-        device = self.device
-        if device is not None:
-            state = self.coordinator.client._optimistic_state.get(self._device_id, {})
-            current_mode_key = state.get("current_mode_key") or device.current_mode_key
-            mode = next((m for m in device.modes if m.key == current_mode_key), None)
-            if mode:
-                supported_fans = [f.key for f in mode.fan_options]
-                if fan_key not in supported_fans:
-                    # Current mode doesn't support this fan speed. Auto-switch to a mode that does.
-                    for fallback in ("vent", "vent_dry"):
-                        fallback_mode = next((m for m in device.modes if m.key == fallback), None)
-                        if fallback_mode and fan_key in [f.key for f in fallback_mode.fan_options]:
-                            if not self.is_on:
-                                await self.coordinator.client.async_set_power(self._device_id, True)
-                            await self.coordinator.client.async_set_mode(self._device_id, fallback, fan_key=fan_key)
-                            await self.coordinator.async_request_refresh()
-                            return
+        step = self.percentage_step
+        index = int(round(percentage / step)) - 1
+        index = max(0, min(len(valid_fans) - 1, index))
+        fan_key = valid_fans[index]
 
         if not self.is_on:
             await self.coordinator.client.async_set_power(self._device_id, True)
