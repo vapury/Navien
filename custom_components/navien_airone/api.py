@@ -398,7 +398,9 @@ class NavienSmartApiClient:
             }
         }
         await self._async_send_control(device, "power", desired)
-        self._optimistic_state.setdefault(device_id, {})["power"] = power
+        state = self._optimistic_state.setdefault(device_id, {})
+        state["power"] = power
+        state["updated_at"] = time.time()
 
     async def async_set_mode(
         self,
@@ -419,6 +421,7 @@ class NavienSmartApiClient:
         state = self._optimistic_state.setdefault(device_id, {})
         state["current_mode_key"] = mode.key
         state["current_fan_key"] = fan.key
+        state["updated_at"] = time.time()
         if target_humidity is not None:
             state["target_humidity"] = int(target_humidity)
             state["target_humidity_updated_at"] = time.time()
@@ -483,6 +486,14 @@ class NavienSmartApiClient:
         modes = self._extract_modes(raw_device)
         current_state = self._extract_current_state(raw_device, modes)
         optimistic = self._optimistic_state.get(device_seq, {})
+        
+        optimistic_updated_at = optimistic.get("updated_at", 0)
+        use_optimistic = bool(time.time() - optimistic_updated_at < OPTIMISTIC_STATE_TTL)
+        
+        power = optimistic.get("power") if use_optimistic and "power" in optimistic else current_state.get("power", optimistic.get("power"))
+        current_mode_key = optimistic.get("current_mode_key") if use_optimistic and "current_mode_key" in optimistic else current_state.get("current_mode_key", optimistic.get("current_mode_key"))
+        current_fan_key = optimistic.get("current_fan_key") if use_optimistic and "current_fan_key" in optimistic else current_state.get("current_fan_key", optimistic.get("current_fan_key"))
+
         target_humidity = current_state.get("target_humidity", optimistic.get("target_humidity"))
         optimistic_target = optimistic.get("target_humidity")
         optimistic_target_updated_at = optimistic.get("target_humidity_updated_at")
@@ -502,11 +513,11 @@ class NavienSmartApiClient:
             id=device_seq,
             name=str(name),
             type=device_type,
-            power=current_state.get("power", optimistic.get("power")),
+            power=power,
             current_temperature=current_temperature,
             target_humidity=target_humidity,
-            current_mode_key=current_state.get("current_mode_key", optimistic.get("current_mode_key")),
-            current_fan_key=current_state.get("current_fan_key", optimistic.get("current_fan_key")),
+            current_mode_key=current_mode_key,
+            current_fan_key=current_fan_key,
             modes=modes,
             air_sensors=air_sensors,
             sensor_profile=sensor_profile,
@@ -976,6 +987,8 @@ class NavienSmartApiClient:
                     if max_val in (3, 4, 5):
                         supported = list(range(1, int(max_val) + 1))
                         break
+            if not supported:
+                supported = [1, 2, 3, 4]
 
         if configurable and isinstance(supported, list) and supported:
             for air_volume in supported:
