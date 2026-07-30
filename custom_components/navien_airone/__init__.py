@@ -14,9 +14,8 @@ from .coordinator import NavienSmartDataUpdateCoordinator
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
-    Platform.SWITCH,
-    Platform.SELECT,
     Platform.NUMBER,
+    Platform.FAN,
 ]
 
 
