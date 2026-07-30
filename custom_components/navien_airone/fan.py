@@ -54,7 +54,7 @@ class NavienSmartFan(
             FanEntityFeature.SET_SPEED
             | FanEntityFeature.TURN_ON
             | FanEntityFeature.TURN_OFF
-            | FanEntityFeature.SET_PRESET_MODE
+            | FanEntityFeature.PRESET_MODE
         )
 
     @property
