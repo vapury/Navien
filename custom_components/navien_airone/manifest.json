@@ -1,5 +1,5 @@
 {
-  "domain": "navien_smart",
+  "domain": "navien_airone",
   "name": "Navien Airone",
   "codeowners": ["@jhkwon19"],
   "config_flow": true,

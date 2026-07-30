@@ -1,6 +1,6 @@
 """Constants for Navien Smart."""
 
-DOMAIN = "navien_smart"
+DOMAIN = "navien_airone"
 STORAGE_KEY = f"{DOMAIN}_state"
 STORAGE_VERSION = 1
 
