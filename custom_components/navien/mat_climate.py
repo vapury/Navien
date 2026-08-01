@@ -143,6 +143,25 @@ class NavienSmartMatClimate(CoordinatorEntity[NavienSmartDataUpdateCoordinator],
         # 2: 대기, 3: 슬립 -> IDLE
         return HVACAction.IDLE
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return entity specific state attributes."""
+        if self.device is None:
+            return {}
+        
+        attrs = {}
+        error_code = self.device.error_code
+        if error_code is not None:
+            attrs["error_code"] = error_code
+            if error_code == 5:
+                attrs["error_description"] = "E5: 코드 연결 안됨 (좌/우 분리 코드 확인 요망)"
+                
+        op_mode = self.device.operation_mode
+        if op_mode is not None:
+            attrs["operation_mode"] = op_mode
+            
+        return attrs
+
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set target temperature."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
