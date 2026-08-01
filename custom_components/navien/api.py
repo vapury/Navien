@@ -801,8 +801,8 @@ class NavienSmartApiClient:
             )
         return summary
 
-    @staticmethod
-    def _find_status_room_controller(raw_device: dict[str, Any]) -> dict[str, Any]:
+    @classmethod
+    def _find_status_room_controller(cls, raw_device: dict[str, Any]) -> dict[str, Any]:
         """Find a roomController object that looks like live status."""
         properties = raw_device.get("Properties") or {}
         candidates = [
@@ -820,7 +820,7 @@ class NavienSmartApiClient:
             if not isinstance(candidate, dict):
                 continue
             mode_value = candidate.get("mode")
-            if mode_value is None or self._int_value(mode_value) is not None:
+            if mode_value is None or cls._int_value(mode_value) is not None:
                 return candidate
         return {}
 
