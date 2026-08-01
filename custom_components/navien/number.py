@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import NavienDevice, NavienMode
 from .const import DOMAIN
 from .coordinator import NavienSmartDataUpdateCoordinator
+from .mat_number import async_setup_entry as async_setup_mat_number
 
 
 async def async_setup_entry(
@@ -27,6 +28,9 @@ async def async_setup_entry(
         for device in coordinator.devices
         if _dry_mode(device) is not None
     )
+    
+    # Load mat number entities
+    await async_setup_mat_number(hass, entry, async_add_entities)
 
 
 class NavienSmartTargetHumidityNumber(

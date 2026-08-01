@@ -23,6 +23,7 @@ from uuid import uuid4
 from aiohttp import ClientResponse, ClientSession
 
 from .const import API_BASE_URL, MEMBER_BASE_URL
+from .mat_models import MatDevice
 
 LOGGER = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ class NavienSmartApiClient:
         self._latest_status_by_device_id: dict[str, dict[str, Any]] = {}
         self._latest_air_sensors_by_device_id: dict[str, dict[str, dict[str, Any]]] = {}
         self._devices: dict[str, NavienDevice] = {}
+        self.mat_devices: dict[str, MatDevice] = {}
         self._raw_devices: list[dict[str, Any]] = []
         self._logged_unsupported_devices: set[tuple[str, str, str]] = set()
         self._optimistic_state: dict[str, dict[str, Any]] = {}
@@ -326,8 +328,19 @@ class NavienSmartApiClient:
         supported_devices = self._supported_devices(devices)
         self._raw_devices = supported_devices
         await self._async_refresh_mqtt_status(supported_devices)
-        normalized = [await self._normalize_device(device) for device in supported_devices]
+        
+        normalized = []
+        mat_normalized = []
+        for device in supported_devices:
+            if str(device.get("serviceCode") or "") == "200":
+                mat = MatDevice.parse(device)
+                if mat:
+                    mat_normalized.append(mat)
+            else:
+                normalized.append(await self._normalize_device(device))
+                
         self._devices = {device.id: device for device in normalized}
+        self.mat_devices = {mat.device_id: mat for mat in mat_normalized}
         return normalized
 
     def set_status_update_callback(self, callback: Any) -> None:
@@ -344,8 +357,24 @@ class NavienSmartApiClient:
             except Exception as err:
                 LOGGER.warning("Navien Smart MQTT self-healing failed: %s", err)
 
-        normalized = [await self._normalize_device(device) for device in self._raw_devices]
+        normalized = []
+        mat_normalized = []
+        for device in self._raw_devices:
+            if str(device.get("serviceCode") or "") == "200":
+                mat = MatDevice.parse(device)
+                if mat:
+                    mat_normalized.append(mat)
+            else:
+                normalized.append(await self._normalize_device(device))
+                
         self._devices = {device.id: device for device in normalized}
+        self.mat_devices = {mat.device_id: mat for mat in mat_normalized}
+        
+        # 최신 상태(reported)를 매트 모델에 적용
+        for device_id, status in self._latest_status_by_device_id.items():
+            if device_id in self.mat_devices:
+                self.mat_devices[device_id].apply_reported(status)
+                
         return normalized
 
     def _supported_devices(self, raw_devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -354,6 +383,9 @@ class NavienSmartApiClient:
         for raw_device in raw_devices:
             service_code = str(raw_device.get("serviceCode") or "")
             model_code = str(raw_device.get("modelCode") or "")
+            if service_code == "200":
+                supported.append(raw_device)
+                continue
             if service_code == SUPPORTED_SERVICE_CODE and model_code in SUPPORTED_MODEL_CODES:
                 supported.append(raw_device)
                 continue
@@ -409,6 +441,27 @@ class NavienSmartApiClient:
         state = self._optimistic_state.setdefault(device_id, {})
         state["power"] = power
         state["updated_at"] = time.time()
+
+    async def async_mat_control(self, device: MatDevice, desired: dict[str, Any]) -> None:
+        """Send a shadow update command to a Mat device."""
+        if self._user_seq is None or self._home_seq is None:
+            await self.async_login()
+            
+        await self._request_json(
+            "POST",
+            f"/api/v2.0/devices/{device.device_seq}/control",
+            params={"homeSeq": self._home_seq, "userSeq": self._user_seq},
+            json_body={
+                "serviceCode": device.service_code,
+                "payload": {
+                    "clientId": self._client_id(),
+                    "sessionId": str(int(time.time() * 1000)),
+                    "requestTopic": f"$aws/things/{device.device_id}/shadow/name/status/update",
+                    "responseTopic": f"$aws/things/{device.device_id}/shadow/name/status/update/accepted",
+                    "state": {"desired": desired},
+                },
+            },
+        )
 
     async def async_set_mode(
         self,
@@ -1332,27 +1385,50 @@ class NavienSmartApiClient:
         topic = str(message.topic)
         payload = message.payload.decode("utf-8", errors="ignore")
         LOGGER.debug("Navien Smart MQTT message received topic=%s payload_length=%s", topic, len(payload))
-        self._log_mqtt_payload_shape(topic, payload)
-        status = self._extract_mqtt_room_controller_status(payload)
-        status = self._merge_mqtt_target_humidity(status, payload)
-        physical_device_id = (
-            status.get("deviceId")
-            if status
-            else self._mqtt_topic_device_ids.get(topic) or self._physical_device_id_from_topic(topic)
-        )
-        if physical_device_id is None:
-            physical_device_id = self._mqtt_topic_device_ids.get(topic) or self._physical_device_id_from_topic(topic)
-        if physical_device_id is not None:
-            changed = False
-            if status:
-                self._latest_status_by_device_id[str(physical_device_id)] = status
-                changed = True
-            air_sensors = self._extract_mqtt_air_sensors(payload, status)
-            if air_sensors:
-                self._latest_air_sensors_by_device_id[str(physical_device_id)] = air_sensors
-                changed = True
-            if changed:
-                self._notify_status_update()
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            data = {}
+            
+        # 매트(mate) 토픽인지 확인
+        is_mat = "mate/" in topic
+        
+        status = None
+        air_sensors = None
+        changed = False
+        
+        physical_device_id = self._mqtt_topic_device_ids.get(topic) or self._physical_device_id_from_topic(topic)
+        
+        if is_mat:
+            # 매트 shadow reported 추출
+            reported = None
+            if "state" in data and "reported" in data["state"]:
+                reported = data["state"]["reported"]
+            elif "heater" in data:
+                reported = data
+                
+            if reported and physical_device_id:
+                if str(physical_device_id) in self.mat_devices:
+                    self.mat_devices[str(physical_device_id)].apply_reported(reported)
+                    changed = True
+        else:
+            status = self._extract_mqtt_room_controller_status(payload)
+            status = self._merge_mqtt_target_humidity(status, payload)
+            if not physical_device_id and status:
+                physical_device_id = status.get("deviceId")
+                
+            if physical_device_id is not None:
+                if status:
+                    self._latest_status_by_device_id[str(physical_device_id)] = status
+                    changed = True
+                air_sensors = self._extract_mqtt_air_sensors(payload, status)
+                if air_sensors:
+                    self._latest_air_sensors_by_device_id[str(physical_device_id)] = air_sensors
+                    changed = True
+                    
+        if changed:
+            self._notify_status_update()
+            
         event = self._mqtt_waiters.get(topic)
         if event is not None and self._mqtt_loop is not None:
             self._mqtt_loop.call_soon_threadsafe(event.set)
@@ -1656,6 +1732,17 @@ class NavienSmartApiClient:
 
     def _status_subscribe_topics(self, raw_device: dict[str, Any]) -> tuple[str, ...]:
         """Return all topics that may carry current status for a device."""
+        service_code = str(raw_device.get("serviceCode") or "")
+        
+        if service_code == "200":
+            device_id = raw_device.get("deviceId")
+            return (
+                f"{self._home_seq}/mate/{device_id}",
+                f"$aws/things/{device_id}/shadow/name/status/update/accepted",
+                f"$aws/things/{device_id}/shadow/name/status/update/documents",
+                f"$aws/things/{device_id}/shadow/name/status/get/accepted",
+            )
+            
         topics = [
             self._status_response_topic(raw_device),
             self._control_response_topic(raw_device),
@@ -1672,6 +1759,12 @@ class NavienSmartApiClient:
         if match:
             return match.group(1)
         match = re.search(r"/airone/([^/]+)$", topic)
+        if match:
+            return match.group(1)
+        match = re.search(r"/mate/([^/]+)$", topic)
+        if match:
+            return match.group(1)
+        match = re.search(r"\$aws/things/([^/]+)/shadow/", topic)
         if match:
             return match.group(1)
         return None

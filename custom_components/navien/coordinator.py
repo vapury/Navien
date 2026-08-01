@@ -35,6 +35,11 @@ class NavienSmartDataUpdateCoordinator(DataUpdateCoordinator[list[NavienDevice]]
         """Return known devices."""
         return self.data or []
 
+    @property
+    def mat_devices(self) -> dict[str, Any]:
+        """Return known mat devices."""
+        return getattr(self.client, "mat_devices", {})
+
     def device_by_id(self, device_id: str) -> NavienDevice | None:
         """Return a device by ID."""
         return next((device for device in self.devices if device.id == device_id), None)

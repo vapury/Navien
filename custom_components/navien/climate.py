@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import NavienDevice
 from .const import DOMAIN
 from .coordinator import NavienSmartDataUpdateCoordinator
+from .mat_climate import async_setup_entry as async_setup_mat_climate
 
 
 async def async_setup_entry(
@@ -32,6 +33,9 @@ async def async_setup_entry(
         for device in coordinator.devices
         if device.type == "climate"
     )
+    
+    # Load mat climate entities
+    await async_setup_mat_climate(hass, entry, async_add_entities)
 
 
 class NavienSmartClimate(CoordinatorEntity[NavienSmartDataUpdateCoordinator], ClimateEntity):
