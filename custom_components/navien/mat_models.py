@@ -59,11 +59,11 @@ class MatDevice:
         self.heat_control = self._parse_heat_control(raw)
         
         # 양쪽 제어 여부 파싱 (isDouble)
-        functions = _dig(raw, "Properties", "data", "did", "functions") or {}
+        functions = _dig(raw, "Properties", "registry", "attributes", "functions") or {}
         self.is_double = bool(functions.get("isDouble", False))
 
     def _parse_heat_control(self, raw: dict[str, Any]) -> HeatControl | None:
-        control = _dig(raw, "Properties", "data", "did", "functions", "heatControl")
+        control = _dig(raw, "Properties", "registry", "attributes", "functions", "heatControl")
         if not isinstance(control, dict):
             return None
             
