@@ -1252,17 +1252,28 @@ class NavienSmartApiClient:
         """Ask the cloud bridge to publish current status on the MQTT response topic."""
         if self._user_seq is None or self._home_seq is None:
             await self.async_login()
+            
+        service_code = str(raw_device.get("serviceCode") or "")
+        device_id = raw_device.get("deviceId")
+        
+        if service_code == "200":
+            request_topic = f"$aws/things/{device_id}/shadow/name/status/get"
+            response_topic = f"$aws/things/{device_id}/shadow/name/status/get/accepted"
+        else:
+            request_topic = self._status_request_topic(raw_device)
+            response_topic = self._status_response_topic(raw_device)
+            
         await self._request_json(
             "POST",
             f"/api/v2.0/devices/{raw_device['deviceSeq']}/control",
             params={"homeSeq": self._home_seq, "userSeq": self._user_seq},
             json_body={
-                "serviceCode": raw_device.get("serviceCode"),
+                "serviceCode": service_code,
                 "payload": {
                     "clientId": self._client_id(),
                     "sessionId": str(int(time.time() * 1000)),
-                    "requestTopic": self._status_request_topic(raw_device),
-                    "responseTopic": self._status_response_topic(raw_device),
+                    "requestTopic": request_topic,
+                    "responseTopic": response_topic,
                 },
             },
         )
@@ -1398,6 +1409,9 @@ class NavienSmartApiClient:
         changed = False
         
         physical_device_id = self._mqtt_topic_device_ids.get(topic) or self._physical_device_id_from_topic(topic)
+        
+        # 매트(mate) 또는 AWS IoT shadow 토픽인지 확인
+        is_mat = "mate/" in topic or "$aws/things/" in topic or (physical_device_id and str(physical_device_id) in self.mat_devices)
         
         if is_mat:
             # 매트 shadow reported 추출
